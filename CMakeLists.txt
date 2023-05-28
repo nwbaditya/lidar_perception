@@ -12,11 +12,17 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_ros
   roscpp
   sensor_msgs
+  geometry_msgs
+  std_msgs
   laser_geometry
+  message_generation
+  visualization_msgs
+  tf2
 )
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
+
 
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -49,11 +55,11 @@ find_package(catkin REQUIRED COMPONENTS
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
+add_message_files(
+  FILES
+  Object.msg
+  ObjectsStamped.msg
+)
 
 ## Generate services in the 'srv' folder
 # add_service_files(
@@ -70,10 +76,11 @@ find_package(catkin REQUIRED COMPONENTS
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   sensor_msgs
-# )
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+  geometry_msgs
+)
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -106,8 +113,8 @@ find_package(catkin REQUIRED COMPONENTS
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
 #  INCLUDE_DIRS include
-#  LIBRARIES perception
-#  CATKIN_DEPENDS pcl_conversions pcl_ros roscpp sensor_msgs
+#  LIBRARIES lidar_perception
+ CATKIN_DEPENDS message_runtime pcl_conversions pcl_ros roscpp sensor_msgs std_msgs visualization_msgs
 #  DEPENDS system_lib
 )
 
@@ -136,7 +143,10 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/perception_node.cpp)
+
+add_executable(lidar_tf src/lidar_tf.cpp)
 add_executable(lidar_segmentation src/lidar_segmentation.cpp)
+target_link_libraries(lidar_tf ${catkin_LIBRARIES})
 target_link_libraries(lidar_segmentation ${catkin_LIBRARIES})
 
 ## Rename C++ executable without prefix
