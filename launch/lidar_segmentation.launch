@@ -1,5 +1,11 @@
-<?xml version="1.0"?>
+<!-- <?xml version="1.0"?> -->
 
 <launch>
-     <node name="lidar_perception" pkg="lidar_perception" type="lidar_segmentation" output="screen"/>
+     <node name="lidar_perception" pkg="lidar_perception" type="lidar_segmentation">
+          <param name="/detection_threshold"       type="double"            value="1.0"/>
+          <param name="/lidar_ignore_radius"       type="double"            value="0.3"/>
+          <param name="/cluster_tolerance"         type="double"            value="0.1"/>
+          <param name="/min_cluster"               type="int"               value="20"/>
+          <param name="/max_cluster"               type="int"               value="9999"/>
+     </node>
 </launch>

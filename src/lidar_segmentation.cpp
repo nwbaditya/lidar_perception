@@ -1,11 +1,10 @@
 #include <ros/ros.h>
+#include <tf/transform_listener.h>
 // PCL specific includes
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/LaserScan.h>
 #include <lidar_perception/Object.h>
 #include <lidar_perception/ObjectsStamped.h>
-#include <visualization_msgs/Marker.h>
-#include <visualization_msgs/MarkerArray.h>
 #include <laser_geometry/laser_geometry.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
@@ -20,13 +19,23 @@
 #include <cmath>
 
 
-const float theta = 0;
+//Param
+float theta = 0;
+double detection_threshold;
+double lidar_ignore_radius;
+double cluster_tolerance;
+int min_cluster;
+int max_cluster;
 
 ros::Publisher pub_lidar_segmented;
 ros::Publisher pub_objects_pose;
-ros::Publisher pub_objects_marker;
 
-void laser_cb(const sensor_msgs::LaserScan &scan_msg)
+double getEuclideanDistance(double x, double y){
+  double distance = sqrt(pow(x, 2) + pow(y,2));
+  return distance;
+}
+
+void laser_cb(const sensor_msgs::LaserScan& scan_msg)
 {
     // // Container for original & filtered data
     pcl::PCLPointCloud2 *cloud = new pcl::PCLPointCloud2;
@@ -41,11 +50,12 @@ void laser_cb(const sensor_msgs::LaserScan &scan_msg)
     objects_msg.header.stamp = ros::Time::now();
     objects_msg.header.frame_id = "laser";
 
-    visualization_msgs::MarkerArray marker_array;
     // // Convert to PCL data type
     laser_geometry::LaserProjection projector_;
+    tf::TransformListener tflistener;
     sensor_msgs::PointCloud2 pntCloud;
-    projector_.projectLaser(scan_msg, pntCloud, 2);
+    projector_.projectLaser(scan_msg, pntCloud, -1);
+    // projector_.transformLaserScanToPointCloud("base_link", *scan_msg, pntCloud, tflistener);
 
     pcl_conversions::toPCL(pntCloud, *cloud);
 
@@ -62,7 +72,8 @@ void laser_cb(const sensor_msgs::LaserScan &scan_msg)
     queryPoint.y = 0;
     queryPoint.z = 0;
 
-    float radius = 0.4;
+    std::cout << detection_threshold << std::endl;
+    float radius = lidar_ignore_radius;
 
     std::vector<int> pointIndices;
     std::vector<float> pointDistances;
@@ -88,9 +99,9 @@ void laser_cb(const sensor_msgs::LaserScan &scan_msg)
 
     std::vector<pcl::PointIndices> cluster_indices;
     pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
-    ec.setClusterTolerance(0.3);
-    ec.setMinClusterSize(20);
-    ec.setMaxClusterSize(99999);
+    ec.setClusterTolerance(cluster_tolerance);
+    ec.setMinClusterSize(min_cluster);
+    ec.setMaxClusterSize(max_cluster);
     ec.setSearchMethod(tree);
     ec.setInputCloud(point_cloudPtr);
     ec.extract(cluster_indices);
@@ -188,35 +199,18 @@ void laser_cb(const sensor_msgs::LaserScan &scan_msg)
         Eigen::Vector4f centroid;
         pcl::compute3DCentroid(*cluster_cloud, centroid);
 
-        float x = centroid[0] * cos(theta) - centroid[1] * sin(theta);
-        float y = centroid[0] * sin(theta) + centroid[1] * cos(theta);
+        float x = centroid[0] * cos(theta) + centroid[1] * sin(theta);
+        float y = -1 * centroid[0] * sin(theta) + centroid[1] * cos(theta);
 
-        std::cout << centroid[0] << " " << x << std::endl;
+        double euclidean_distance = getEuclideanDistance(x, y);
+        if(euclidean_distance > detection_threshold){
+          continue;
+        }
+
         lidar_perception::Object object;
         object.position.x = x;
         object.position.y = y;
 
-        visualization_msgs::Marker marker;
-        marker.header.stamp = ros::Time::now();
-        marker.header.frame_id = "laser";
-        marker.id = j;
-        marker.type = marker.CYLINDER;
-        marker.action = marker.ADD;
-        marker.pose.position = object.position;
-        marker.pose.orientation.x = 0;
-        marker.pose.orientation.y = 0;
-        marker.pose.orientation.z = 0;
-        marker.pose.orientation.w = 1.0;
-
-        marker.scale.x = 0.2;
-        marker.scale.y = 0.2;
-        marker.scale.z = 0.1;
-        marker.color.a = 1.0;
-        marker.color.r = 0.0;
-        marker.color.g = 1.0;
-        marker.color.b = 0.0;
-
-        marker_array.markers.push_back(marker);
         objects_msg.objects.push_back(object);
         j++;
       }
@@ -224,40 +218,37 @@ void laser_cb(const sensor_msgs::LaserScan &scan_msg)
     for(const Eigen::Vector2f& coordinate: coordinate_vector){
         std::cout << "Coordinate : " << "(" << coordinate[0] << "," << coordinate[1] << ")" << std::endl;
     }
-    // std::cout<< coordinate_vector << std::endl;
-    // std::cerr<< "segmented:  " << (int)point_cloud_segmented->size() << "\n";
-    // std::cerr<< "origin:     " << (int)point_cloudPtr->size() << "\n";
-
-    std::cout << "markers size : " << marker_array.markers.size() << std::endl;
-
     // Convert to ROS data type
     point_cloud_segmented->header.frame_id = point_cloudPtr->header.frame_id;
 
     if(point_cloud_segmented->size()) pcl::toPCLPointCloud2(*point_cloud_segmented, cloud_filtered);
-    else pcl::toPCLPointCloud2(*point_cloudPtr, cloud_filtered);
+    // else pcl::toPCLPointCloud2(*point_cloudPtr, cloud_filtered);
+    else return;
 
     sensor_msgs::PointCloud2 output;
     pcl_conversions::fromPCL(cloud_filtered, output);
     // Publish the data
     pub_objects_pose.publish(objects_msg);
     pub_lidar_segmented.publish(output);
-    pub_objects_marker.publish(marker_array);
-
 }
 
 int main(int argc, char **argv)
 {
     // Initialize ROS
     ros::init(argc, argv, "perception");
+    // ros::param::get("detection_threshold", detection_threshold);
     ros::NodeHandle nh;
+    nh.getParam("/lidar_perception/detection_threshold", detection_threshold);
+    nh.getParam("/lidar_perception/lidar_ignore_radius", lidar_ignore_radius);
+    nh.getParam("/lidar_perception/cluster_tolerance", cluster_tolerance);
+    nh.getParam("/lidar_perception/min_cluster", min_cluster);
+    nh.getParam("/lidar_perception/max_cluster", max_cluster);
 
     // Create a ROS subscriber for the input point cloud
-    ros::Subscriber sub = nh.subscribe("/scan",1000, laser_cb);
+    ros::Subscriber sub = nh.subscribe("/scan", 1, laser_cb);
     // // Create a ROS publisher for the output point cloud
     pub_lidar_segmented = nh.advertise<sensor_msgs::PointCloud2>("/lidar_segmented", 1);
-    pub_objects_pose = nh.advertise<lidar_perception::ObjectsStamped>("/objects_stamped", 1);
-    pub_objects_marker = nh.advertise<visualization_msgs::MarkerArray>("/objects_marker", 1);
-
+    pub_objects_pose = nh.advertise<lidar_perception::ObjectsStamped>("/lidar_perception/objects_stamped", 1);
     // Spin
     ros::spin();
 }

@@ -144,9 +144,9 @@ include_directories(
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/perception_node.cpp)
 
-add_executable(lidar_tf src/lidar_tf.cpp)
+add_executable(lidar_tfv2 src/lidar_tfv2.cpp)
 add_executable(lidar_segmentation src/lidar_segmentation.cpp)
-target_link_libraries(lidar_tf ${catkin_LIBRARIES})
+target_link_libraries(lidar_tfv2 ${catkin_LIBRARIES})
 target_link_libraries(lidar_segmentation ${catkin_LIBRARIES})
 
 ## Rename C++ executable without prefix
